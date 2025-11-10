@@ -30,7 +30,8 @@ class ProductImageSerializer(serializers.ModelSerializer):
 class ProductSerializer(serializers.ModelSerializer):
     image = serializers.ImageField(use_url=True, required=False, allow_null=True)
     images = ProductImageSerializer(many=True, read_only=True)
-    category = serializers.SerializerMethodField()
+    category = serializers.SerializerMethodField(read_only=True)
+    category_id = serializers.IntegerField(write_only=True, required=False)
 
     class Meta:
         model = Product
@@ -40,11 +41,13 @@ class ProductSerializer(serializers.ModelSerializer):
             "slug",
             "description",
             "price",
+            "delivery_charges",
             "sku",
             "image",
             "stock",
             "is_active",
             "category",
+            "category_id",
             "images",
         )
     
@@ -84,6 +87,10 @@ class ProductSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         try:
             attrs = super().validate(attrs)
+            
+            if not self.instance and 'category_id' not in attrs:
+                raise serializers.ValidationError({"category_id": "Category is required when creating a product."})
+            
             if self.instance:
                 name = attrs.get('name', self.instance.name)
             else:

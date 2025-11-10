@@ -24,7 +24,7 @@ class ProductImageInline(admin.TabularInline):
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-	list_display = ("id", "name", "sku", "price", "stock", "is_active", "image_preview")
+	list_display = ("id", "name", "sku", "price", "delivery_charges", "stock", "is_active", "image_preview")
 	list_filter = ("is_active", "category")
 	search_fields = ("name", "sku")
 	readonly_fields = ("image_preview",)

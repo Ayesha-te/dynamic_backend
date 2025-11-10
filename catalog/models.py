@@ -29,6 +29,7 @@ class Product(models.Model):
     slug = models.SlugField(max_length=260, unique=True, blank=True)
     description = models.TextField(blank=True)
     price = models.DecimalField(max_digits=10, decimal_places=2)
+    delivery_charges = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     sku = models.CharField(max_length=50, unique=True)
     image = models.ImageField(upload_to="products/", blank=True, null=True)
     is_active = models.BooleanField(default=True)

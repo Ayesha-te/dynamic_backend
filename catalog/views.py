@@ -7,7 +7,7 @@ from rest_framework import generics, permissions, viewsets, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
-from .models import Product, Category, ProductImage
+from .models import Product, Category, ProductImage, ProductDiscount
 from .serializers import ProductSerializer, CategorySerializer, ProductImageSerializer
 
 logger = logging.getLogger(__name__)
@@ -18,7 +18,8 @@ class ProductListView(generics.ListAPIView):
 	permission_classes = [permissions.AllowAny]
 
 	def get_queryset(self):
-		queryset = Product.objects.filter(is_active=True)
+		# select_related/prefetch_related to reduce DB queries during serialization
+		queryset = Product.objects.filter(is_active=True).select_related('category', 'discount').prefetch_related('images')
 		category_slug = self.request.query_params.get('category')
 		if category_slug:
 			queryset = queryset.filter(category__slug=category_slug)
@@ -30,8 +31,10 @@ class ProductListView(generics.ListAPIView):
 		return context
 
 
+
 class ProductDetailView(generics.RetrieveAPIView):
-	queryset = Product.objects.filter(is_active=True)
+	# Include related objects to avoid extra queries during serialization
+	queryset = Product.objects.filter(is_active=True).select_related('category', 'discount').prefetch_related('images')
 	serializer_class = ProductSerializer
 	permission_classes = [permissions.AllowAny]
 
@@ -42,9 +45,11 @@ class ProductDetailView(generics.RetrieveAPIView):
 
 
 class CategoryListView(generics.ListAPIView):
-	queryset = Category.objects.filter(is_active=True)
 	serializer_class = CategorySerializer
 	permission_classes = [permissions.AllowAny]
+	
+	def get_queryset(self):
+		return Category.objects.filter(is_active=True, parent_category__isnull=True)
 
 
 class CategoryProductsView(generics.ListAPIView):
@@ -75,7 +80,31 @@ class AdminProductViewSet(viewsets.ModelViewSet):
 	def perform_create(self, serializer):
 		try:
 			logger.debug(f"Creating product with data: {serializer.validated_data}")
-			serializer.save()
+			product = serializer.save()
+			# Handle optional discount fields sent by admin frontend
+			discount_price = None
+			original_price = None
+			try:
+				discount_price = self.request.data.get('discount_price', None)
+			except Exception:
+				discount_price = None
+			try:
+				original_price = self.request.data.get('original_price', None)
+			except Exception:
+				original_price = None
+			if discount_price not in (None, '', 'null'):
+				from decimal import Decimal
+				dp = Decimal(str(discount_price))
+				op = Decimal(str(original_price)) if original_price not in (None, '', 'null') else product.price
+				# create or update ProductDiscount
+				ProductDiscount.objects.update_or_create(
+					product=product,
+					defaults={
+						'original_price': op,
+						'discount_price': dp,
+						'is_active': True,
+					}
+				)
 		except Exception as e:
 			logger.exception(f"Error creating product: {str(e)}")
 			raise
@@ -83,7 +112,40 @@ class AdminProductViewSet(viewsets.ModelViewSet):
 	def perform_update(self, serializer):
 		try:
 			logger.debug(f"Updating product {self.get_object().id} with data: {serializer.validated_data}")
-			serializer.save()
+			# Capture current product instance for reference
+			product_before = self.get_object()
+			product = serializer.save()
+			# Manage discount creation/update/deletion based on incoming data
+			try:
+				discount_price = self.request.data.get('discount_price', None)
+			except Exception:
+				discount_price = None
+			try:
+				original_price = self.request.data.get('original_price', None)
+			except Exception:
+				original_price = None
+			from decimal import Decimal
+			# If discount_price explicitly provided and non-empty -> create/update
+			if discount_price not in (None, '', 'null'):
+				try:
+					dp = Decimal(str(discount_price))
+					op = Decimal(str(original_price)) if original_price not in (None, '', 'null') else product.price
+					ProductDiscount.objects.update_or_create(
+						product=product,
+						defaults={
+							'original_price': op,
+							'discount_price': dp,
+							'is_active': True,
+						}
+					)
+				except Exception:
+					logger.exception("Failed to create/update ProductDiscount")
+			# If discount_price is empty/null - remove any existing discount
+			elif discount_price in (None, '', 'null'):
+				try:
+					ProductDiscount.objects.filter(product=product).delete()
+				except Exception:
+					logger.exception("Failed to remove ProductDiscount")
 		except Exception as e:
 			logger.exception(f"Error updating product: {str(e)}")
 			raise

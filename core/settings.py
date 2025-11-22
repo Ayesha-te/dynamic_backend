@@ -20,7 +20,7 @@ import dj_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 DEBUG = False
 
-ALLOWED_HOSTS = ['ayeshajahangir25.pythonanywhere.com']
+ALLOWED_HOSTS = ['*']
 
 
 # Quick-start development settings - unsuitable for production
@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     'accounts',
     'orders',
     'blogs',
+    'newsletter',
 ]
 
 MIDDLEWARE = [

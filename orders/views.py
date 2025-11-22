@@ -5,7 +5,8 @@ from django.shortcuts import get_object_or_404
 
 from .models import Cart, CartItem, Order
 from .serializers import CartSerializer, CartItemSerializer, OrderSerializer
-from catalog.models import Product
+from catalog.models import Product, Category
+import logging
 from rest_framework.permissions import IsAdminUser
 from rest_framework import viewsets
 from django.utils import timezone
@@ -118,4 +119,57 @@ class CheckoutView(APIView):
 		cart.is_active = False
 		cart.save()
 		return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)
+
+
+class AdminStatsView(APIView):
+	"""Return small, fast summary stats for the admin dashboard.
+	Provides counts and small recent lists so the admin dashboard can render quickly.
+	"""
+	permission_classes = [IsAdminUser]
+
+	def get(self, request):
+		try:
+			product_count = Product.objects.count()
+			category_count = Category.objects.count()
+			order_count = Order.objects.count()
+
+			recent_orders_qs = Order.objects.select_related('user').order_by('-created_at')[:4]
+			recent_orders = [
+				{
+					'id': o.id,
+					'user': {
+						'id': getattr(o.user, 'id', None),
+						'username': getattr(o.user, 'username', ''),
+						'email': getattr(o.user, 'email', ''),
+					},
+					'total_amount': str(o.total_amount),
+					'is_paid': o.is_paid,
+					'paid_at': o.paid_at.isoformat() if o.paid_at else None,
+					'created_at': o.created_at.isoformat() if o.created_at else None,
+				}
+				for o in recent_orders_qs
+			]
+
+			low_stock_qs = Product.objects.filter(stock__lt=10).order_by('stock')[:4]
+			low_stock = [
+				{
+					'id': p.id,
+					'name': p.name,
+					'sku': p.sku,
+					'stock': p.stock,
+				}
+				for p in low_stock_qs
+			]
+
+			return Response({
+				'product_count': product_count,
+				'category_count': category_count,
+				'order_count': order_count,
+				'recent_orders': recent_orders,
+				'low_stock': low_stock,
+			})
+		except Exception as e:
+			logger = logging.getLogger(__name__)
+			logger.exception("Failed to build admin stats: %s", e)
+			return Response({'error': 'Failed to build admin stats'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

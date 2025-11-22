@@ -8,6 +8,7 @@ class Category(models.Model):
     description = models.TextField(blank=True)
     image = models.URLField(blank=True)
     is_active = models.BooleanField(default=True)
+    parent_category = models.ForeignKey('self', null=True, blank=True, on_delete=models.CASCADE, related_name='subcategories')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -62,3 +63,18 @@ class ProductImage(models.Model):
 
     def __str__(self) -> str:
         return f"Image for {self.product.name} - {self.color}"
+
+
+class ProductDiscount(models.Model):
+    product = models.OneToOneField(Product, related_name="discount", on_delete=models.CASCADE)
+    original_price = models.DecimalField(max_digits=10, decimal_places=2)
+    discount_price = models.DecimalField(max_digits=10, decimal_places=2)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"Discount for {self.product.name}"
